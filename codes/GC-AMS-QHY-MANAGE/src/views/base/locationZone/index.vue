@@ -1,0 +1,359 @@
+<template>
+  <div class="app-container">
+    <el-form :model="queryParams" ref="queryForm" :inline="true" v-show="showSearch" label-width="68px">
+      <el-form-item label="库区名称" prop="zoneName">
+        <el-input
+          v-model="queryParams.zoneName"
+          placeholder="请输入库区名称"
+          clearable
+          size="small"
+          @keyup.enter.native="handleQuery"
+        />
+      </el-form-item>
+      <el-form-item label="状态" prop="status">
+        <el-select v-model="queryParams.status" placeholder="请选择状态" clearable size="small">
+          <el-option
+            v-for="dict in dict.type.sys_normal_disable"
+            :key="dict.value"
+            :label="dict.label"
+            :value="dict.value"
+          />
+        </el-select>
+      </el-form-item>
+      <el-form-item>
+        <el-button type="primary" icon="el-icon-search" size="mini" @click="handleQuery">搜索</el-button>
+        <el-button icon="el-icon-refresh" size="mini" @click="resetQuery">重置</el-button>
+      </el-form-item>
+    </el-form>
+
+    <el-row :gutter="10" class="mb8">
+      <el-col :span="1.5">
+        <el-button
+          type="primary"
+          plain
+          icon="el-icon-plus"
+          size="mini"
+          @click="handleAdd"
+          v-hasPermi="['base:locationZone:add']"
+        >新增</el-button>
+      </el-col>
+      <el-col :span="1.5">
+        <el-button
+          type="success"
+          plain
+          icon="el-icon-edit"
+          size="mini"
+          :disabled="single"
+          @click="handleUpdate"
+          v-hasPermi="['base:locationZone:edit']"
+        >修改</el-button>
+      </el-col>
+      <el-col :span="1.5">
+        <el-button
+          type="danger"
+          plain
+          icon="el-icon-delete"
+          size="mini"
+          :disabled="multiple"
+          @click="handleDelete"
+          v-hasPermi="['base:locationZone:remove']"
+        >删除</el-button>
+      </el-col>
+      <el-col :span="1.5">
+        <el-button
+          type="warning"
+          plain
+          icon="el-icon-download"
+          size="mini"
+          @click="handleExport"
+          v-hasPermi="['base:locationZone:export']"
+        >导出</el-button>
+      </el-col>
+      <right-toolbar :showSearch.sync="showSearch" @queryTable="getList"></right-toolbar>
+    </el-row>
+
+    <el-table v-loading="loading" :data="locationZoneList" @selection-change="handleSelectionChange">
+      <el-table-column type="selection" width="55" align="center" />
+      <el-table-column label="库区ID" align="center" prop="zoneId" />
+      <el-table-column label="库区名称" align="center" prop="zoneName" />
+      <el-table-column label="所属仓库" align="center" prop="warehouseName" />
+      <el-table-column label="状态" align="center" prop="status">
+        <template slot-scope="scope">
+          <dict-tag :options="dict.type.sys_normal_disable" :value="scope.row.status"/>
+        </template>
+      </el-table-column>
+      <el-table-column label="库区类型" align="center" prop="userdefine1" >
+        <template slot-scope="scope">
+          <div v-if="scope.row.userdefine1 === 'INV'">存储区</div>
+          <div v-if="scope.row.userdefine1 === 'OTHER'">非存储区</div>
+        </template>
+      </el-table-column>
+      <el-table-column label="库区排序" align="center" prop="userdefine2" />
+     <el-table-column label="库位视图排序" align="center" prop="userdefine3" />
+      <!--<el-table-column label="自定义字段4" align="center" prop="userdefine4" />
+     <el-table-column label="自定义字段5" align="center" prop="userdefine5" />-->
+      <el-table-column label="备注" align="center" prop="remark" />
+      <el-table-column label="操作" align="center" class-name="small-padding fixed-width">
+        <template slot-scope="scope">
+          <el-button
+            size="mini"
+            type="text"
+            icon="el-icon-edit"
+            @click="handleUpdate(scope.row)"
+            v-hasPermi="['base:locationZone:edit']"
+          >修改</el-button>
+          <el-button
+            size="mini"
+            type="text"
+            icon="el-icon-delete"
+            @click="handleDelete(scope.row)"
+            v-hasPermi="['base:locationZone:remove']"
+          >删除</el-button>
+        </template>
+      </el-table-column>
+    </el-table>
+
+    <pagination
+      v-show="total>0"
+      :total="total"
+      :page.sync="queryParams.pageNum"
+      :limit.sync="queryParams.pageSize"
+      @pagination="getList"
+    />
+
+    <!-- 添加或修改库区对话框 -->
+    <el-dialog :title="title" :visible.sync="open" width="500px" append-to-body>
+      <el-form ref="form" :model="form" :rules="rules" label-width="80px">
+        <el-form-item label="所属仓库" prop="warehouseId">
+          <el-select v-model="form.warehouseId" placeholder="请选择所属仓库" clearable size="small" style="width: 100%">
+            <el-option
+              v-for="dict in this.warehouseCombo"
+              :key="dict.warehouseId"
+              :label="dict.warehouseName"
+              :value="dict.warehouseId"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="库区名称" prop="zoneName" >
+          <el-input v-model="form.zoneName" placeholder="请输入库区名称" />
+        </el-form-item>
+        <el-form-item label="库区排序" prop="userdefine2" >
+          <el-input v-model="form.userdefine2" placeholder="请输入库区排序编号" />
+        </el-form-item>
+        <el-form-item label="库位视图排序" prop="userdefine3">
+          <el-input v-model="form.userdefine3" placeholder="请输入库位视图排序编号" />
+        </el-form-item>
+        <el-form-item label="库区类型" prop="userdefine1">
+          <el-select v-model="form.userdefine1" placeholder="请选择库区类型" clearable size="small" style="width: 100%">
+            <el-option
+              v-for="dict in this.zoneTypeCombo"
+              :key="dict.value"
+              :label="dict.label"
+              :value="dict.value"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="状态">
+          <el-radio-group v-model="form.status">
+            <el-radio
+              v-for="dict in dict.type.sys_normal_disable"
+              :key="dict.value"
+:label="dict.value"
+            >{{dict.label}}</el-radio>
+          </el-radio-group>
+        </el-form-item>
+        <!--<el-form-item label="自定义字段2" prop="userdefine2">
+          <el-input v-model="form.userdefine2" placeholder="请输入自定义字段2" />
+        </el-form-item>
+        <el-form-item label="自定义字段3" prop="userdefine3">
+          <el-input v-model="form.userdefine3" placeholder="请输入自定义字段3" />
+        </el-form-item>
+        <el-form-item label="自定义字段4" prop="userdefine4">
+          <el-input v-model="form.userdefine4" placeholder="请输入自定义字段4" />
+        </el-form-item>
+        <el-form-item label="自定义字段5" prop="userdefine5">
+          <el-input v-model="form.userdefine5" placeholder="请输入自定义字段5" />
+        </el-form-item>-->
+        <el-form-item label="备注" prop="remark">
+          <el-input v-model="form.remark" type="textarea" placeholder="请输入内容" />
+        </el-form-item>
+      </el-form>
+      <div slot="footer" class="dialog-footer">
+        <el-button type="primary" @click="submitForm">确 定</el-button>
+        <el-button @click="cancel">取 消</el-button>
+      </div>
+    </el-dialog>
+  </div>
+</template>
+
+<script>
+import { listLocationZone, getLocationZone, delLocationZone, addLocationZone, updateLocationZone } from "@/api/base/locationZone";
+import { queryWarehouseDict } from "@/api/base/warehouse";
+
+export default {
+  name: "LocationZone",
+  dicts: ['sys_normal_disable'],
+  data() {
+    return {
+      // 遮罩层
+      loading: true,
+      // 选中数组
+      ids: [],
+      // 非单个禁用
+      single: true,
+      // 非多个禁用
+      multiple: true,
+      // 显示搜索条件
+      showSearch: true,
+      // 总条数
+      total: 0,
+      // 库区表格数据
+      locationZoneList: [],
+      // 弹出层标题
+      title: "",
+      // 是否显示弹出层
+      open: false,
+      // 查询参数
+      queryParams: {
+        pageNum: 1,
+        pageSize: 10,
+        zoneName: null,
+        warehouseId: null,
+        status: null,
+      },
+      // 表单参数
+      form: {},
+      // 表单校验
+      rules: {
+        zoneName: [
+          { required: true, message: "库区名称不能为空", trigger: "blur" }
+        ],
+        warehouseId: [
+          { required: true, message: "所属仓库不能为空", trigger: "change" }
+        ],
+        userdefine1: [
+          { required: true, message: "库区类型不能为空", trigger: "change" }
+        ],
+      },
+      warehouseCombo: [],
+      zoneTypeCombo:[
+        {label: '存储区', value: 'INV'},
+        {label: '非存储区', value: 'OTHER'},
+      ]
+    };
+  },
+  created() {
+    this.init();
+    this.getList();
+  },
+  methods: {
+    init() {
+      queryWarehouseDict().then(response => {
+        this.warehouseCombo = response.data;
+      });
+    },
+    /** 查询库区列表 */
+    getList() {
+      this.loading = true;
+      listLocationZone(this.queryParams).then(response => {
+        this.locationZoneList = response.rows;
+        this.total = response.total;
+        this.loading = false;
+      });
+    },
+    // 取消按钮
+    cancel() {
+      this.open = false;
+      this.reset();
+    },
+    // 表单重置
+    reset() {
+      this.form = {
+        zoneId: null,
+        zoneName: null,
+        warehouseId: null,
+        status: "0",
+        userdefine1: null,
+        userdefine2: null,
+        userdefine3: null,
+        userdefine4: null,
+        userdefine5: null,
+        createBy: null,
+        createTime: null,
+        updateBy: null,
+        updateTime: null,
+        remark: null
+      };
+      this.resetForm("form");
+    },
+    /** 搜索按钮操作 */
+    handleQuery() {
+      this.queryParams.pageNum = 1;
+      this.getList();
+    },
+    /** 重置按钮操作 */
+    resetQuery() {
+      this.resetForm("queryForm");
+      this.handleQuery();
+    },
+    // 多选框选中数据
+    handleSelectionChange(selection) {
+      this.ids = selection.map(item => item.zoneId)
+      this.single = selection.length!==1
+      this.multiple = !selection.length
+    },
+    /** 新增按钮操作 */
+    handleAdd() {
+      this.reset();
+      this.open = true;
+      this.title = "添加库区";
+    },
+    /** 修改按钮操作 */
+    handleUpdate(row) {
+      this.reset();
+      const zoneId = row.zoneId || this.ids
+      getLocationZone(zoneId).then(response => {
+        this.form = response.data;
+        this.open = true;
+        this.title = "修改库区";
+      });
+    },
+    /** 提交按钮 */
+    submitForm() {
+      this.$refs["form"].validate(valid => {
+        if (valid) {
+          if (this.form.zoneId != null) {
+            updateLocationZone(this.form).then(response => {
+              this.$modal.msgSuccess("修改成功");
+              this.open = false;
+              this.getList();
+            });
+          } else {
+            addLocationZone(this.form).then(response => {
+              this.$modal.msgSuccess("新增成功");
+              this.open = false;
+              this.getList();
+            });
+          }
+        }
+      });
+    },
+    /** 删除按钮操作 */
+    handleDelete(row) {
+      const zoneIds = row.zoneId || this.ids;
+      this.$modal.confirm('是否确认删除库区编号为"' + zoneIds + '"的数据项？').then(function() {
+        return delLocationZone(zoneIds);
+      }).then(() => {
+        this.getList();
+        this.$modal.msgSuccess("删除成功");
+      }).catch(() => {});
+    },
+    /** 导出按钮操作 */
+    handleExport() {
+      this.download('base/locationZone/export', {
+        ...this.queryParams
+      }, `locationZone_${new Date().getTime()}.xlsx`)
+    }
+  }
+};
+</script>
